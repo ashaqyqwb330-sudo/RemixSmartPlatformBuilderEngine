@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
 // Tab selections state representation
 enum class MainTab(val ltrTitle: String, val rtlTitle: String) {
     MONITOR("Monitor", "المراقب"),
+    STORYTELLER("Storyteller", "القصة المصورة"),
     TREEDOC("TreeDoc", "الشجرية"),
     EXECUTOR("Executor", "المنفذ"),
     GEMINI("Gemini AI", "جمناي الذكي"),
@@ -236,6 +237,7 @@ fun MainAppContent(
                 } else {
                     when (currentTab) {
                         MainTab.MONITOR -> MonitorScreen(viewModel)
+                        MainTab.STORYTELLER -> StorytellerScreen(viewModel)
                         MainTab.TREEDOC -> TreeDocScreen(viewModel)
                         MainTab.EXECUTOR -> ExecutorScreen(viewModel)
                         MainTab.GEMINI -> GeminiScreen(viewModel)
@@ -826,6 +828,7 @@ fun AppBottomNavigation(
 fun getTabIcon(tab: MainTab): ImageVector {
     return when (tab) {
         MainTab.MONITOR -> Icons.Default.Home
+        MainTab.STORYTELLER -> Icons.Default.Share
         MainTab.TREEDOC -> Icons.Default.List
         MainTab.EXECUTOR -> Icons.Default.PlayArrow
         MainTab.GEMINI -> Icons.Default.Star
@@ -1169,6 +1172,16 @@ fun MonitorScreen(viewModel: MainViewModel) {
 
         // Live Event Logs List (سجل الأحداث)
         item {
+            val smartPrefs = remember(context) { context.getSharedPreferences("SmartPrefs", Context.MODE_PRIVATE) }
+            var logViewMode by remember {
+                mutableStateOf(smartPrefs.getString("log_view_mode", "technical") ?: "technical")
+            }
+
+            // Sync with SharedPreferences dynamically when the UI is shown
+            LaunchedEffect(Unit) {
+                logViewMode = smartPrefs.getString("log_view_mode", "technical") ?: "technical"
+            }
+
             // Apply filtering and sorting dynamically
             val filteredLogs = remember(
                 eventLogs, selectedLimit, selectedTypeFilter, selectedSeverityFilter, sortNewestFirst, editedLogsMap
@@ -1246,9 +1259,47 @@ fun MonitorScreen(viewModel: MainViewModel) {
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    if (eventLogs.isNotEmpty()) {
-                        TextButton(onClick = { viewModel.clearDatabaseLogs() }) {
-                            Text("تصفير السجل", color = DangerRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Quick mode cycle button
+                        val modeLabel = when (logViewMode) {
+                            "technical" -> "⚙️ تقني"
+                            "developer" -> "💻 مطور"
+                            "academic" -> "🎓 أكاديمي"
+                            "user" -> "👥 مستخدم"
+                            else -> "⚙️ تقني"
+                        }
+                        
+                        Button(
+                            onClick = {
+                                val nextMode = when (logViewMode) {
+                                    "technical" -> "developer"
+                                    "developer" -> "academic"
+                                    "academic" -> "user"
+                                    "user" -> "technical"
+                                    else -> "technical"
+                                }
+                                logViewMode = nextMode
+                                smartPrefs.edit().putString("log_view_mode", nextMode).apply()
+                                Toast.makeText(context, "الوضع النشط: $modeLabel", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MetallicGold.copy(alpha = 0.15f),
+                                contentColor = MetallicGold
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp).testTag("quick_log_mode_toggle")
+                        ) {
+                            Text(modeLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        if (eventLogs.isNotEmpty()) {
+                            TextButton(onClick = { viewModel.clearDatabaseLogs() }) {
+                                Text("تصفير السجل", color = DangerRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -1599,6 +1650,89 @@ fun MonitorScreen(viewModel: MainViewModel) {
                             fontSize = 12.sp,
                             textAlign = TextAlign.Center
                         )
+                    }
+                } else if (logViewMode != "technical") {
+                    // STORYBOARD VIEW (Story Cards)
+                    val stories = remember(filteredLogs, logViewMode) {
+                        com.example.LogAggregator.generateStoryCards(filteredLogs, logViewMode)
+                    }
+                    
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        stories.forEach { story ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(GlassWhite, RoundedCornerShape(16.dp))
+                                    .border(1.dp, GlassBorder.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Big Beautiful Story-focused Circle Icon
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(GoldGlassBg, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(story.icon, fontSize = 18.sp)
+                                    }
+                                    
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            Text(
+                                                text = story.title,
+                                                color = TextSilver,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            
+                                            // Badged count of raw logs grouped
+                                            if (story.rawLogsCount > 1) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(GoldGlassBg, RoundedCornerShape(6.dp))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "×${story.rawLogsCount}",
+                                                        color = MetallicGold,
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        
+                                        Text(
+                                            text = story.details,
+                                            color = TextGray,
+                                            fontSize = 10.sp
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        
+                                        Text(
+                                            text = story.relativeTime,
+                                            color = TextMuted,
+                                            fontSize = 8.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 } else {
                     // Logs rendering layout
@@ -2729,6 +2863,9 @@ fun SettingsScreen(
     var developerMode by remember {
         mutableStateOf(prefs.getBoolean("developer_mode", false))
     }
+    var autoUpdateEnabled by remember {
+        mutableStateOf(prefs.getBoolean("auto_update_enabled", false))
+    }
 
     val currentSavedBaseDir = viewModel.baseDirSetting.collectAsState().value
 
@@ -2865,6 +3002,52 @@ fun SettingsScreen(
                     ) {
                         Text("فتح المركز", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
+        }
+
+        // 🔄 التحقق من التحديثات تلقائيًا
+        item {
+            GlassCard(modifier = Modifier.fillMaxWidth().testTag("auto_update_card")) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔄 التحقق من التحديثات تلقائيًا", color = MetallicGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            com.example.ui.components.SettingsTooltip(
+                                title = "التحقق من التحديثات",
+                                description = "التحقق من وجود تحديثات جديدة للتطبيق تلقائيًا في الخلفية مرة واحدة يوميًا.",
+                                example = "عند العثور على إصدار أحدث، سيتلقى جهازك إشعارًا لتنزيل الـ APK مباشرة."
+                            )
+                        }
+                        Text("جدولة فحص دوري في الخلفية لتحميل أحدث المزايا والتحسينات للمنصة.", color = TextGray, fontSize = 10.sp)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = autoUpdateEnabled,
+                        onCheckedChange = { isChecked ->
+                            autoUpdateEnabled = isChecked
+                            prefs.edit().putBoolean("auto_update_enabled", isChecked).apply()
+                            if (isChecked) {
+                                com.example.service.UpdateService.scheduleDailyUpdateCheck(context)
+                                Toast.makeText(context, "🔄 تم تفعيل التحقق التلقائي من التحديثات", Toast.LENGTH_SHORT).show()
+                            } else {
+                                com.example.service.UpdateService.cancelDailyUpdateCheck(context)
+                                Toast.makeText(context, "❌ تم إلغاء التحقق التلقائي من التحديثات", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = SlateBg,
+                            checkedTrackColor = MetallicGold,
+                            uncheckedThumbColor = TextGray,
+                            uncheckedTrackColor = GlassWhite
+                        ),
+                        modifier = Modifier.testTag("auto_update_switch")
+                    )
                 }
             }
         }
@@ -3132,6 +3315,60 @@ fun SettingsScreen(
                         color = TextGray,
                         fontSize = 10.sp
                     )
+                }
+            }
+        }
+
+        // 🔄 نمط عرض السجل
+        item {
+            val smartPrefs = remember(context) { context.getSharedPreferences("SmartPrefs", Context.MODE_PRIVATE) }
+            var currentLogViewMode by remember {
+                mutableStateOf(smartPrefs.getString("log_view_mode", "technical") ?: "technical")
+            }
+            
+            GlassCard(modifier = Modifier.fillMaxWidth().testTag("log_view_mode_card")) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("نمط عرض سجل الأحداث", color = MetallicGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("اختر طريقة عرض وتجميع سجلات العمليات والأحداث التلقائية:", color = TextGray, fontSize = 10.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val modes = listOf(
+                        Triple("technical", "⚙️ تقني (مفصل)", "عرض السجل التفصيلي الخام كما ورد من بيئة العمل."),
+                        Triple("developer", "💻 قصة مصورة (مطور)", "عرض مجمع يركز على أسماء الملفات والعمليات."),
+                        Triple("academic", "🎓 قصة مصورة (أكاديمي)", "عرض ملخص باستخدام مسميات وصياغات هيكلية أكاديمية دقيقة."),
+                        Triple("user", "👥 قصة مصورة (مستخدم)", "عرض مبسط مريح بجمل واضحة للمستخدم.")
+                    )
+
+                    modes.forEach { (modeKey, modeTitle, modeDesc) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    currentLogViewMode = modeKey
+                                    smartPrefs.edit().putString("log_view_mode", modeKey).apply()
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = currentLogViewMode == modeKey,
+                                onClick = {
+                                    currentLogViewMode = modeKey
+                                    smartPrefs.edit().putString("log_view_mode", modeKey).apply()
+                                },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = MetallicGold,
+                                    unselectedColor = TextGray
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(modeTitle, color = TextSilver, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(modeDesc, color = TextGray, fontSize = 9.sp)
+                            }
+                        }
+                    }
                 }
             }
         }

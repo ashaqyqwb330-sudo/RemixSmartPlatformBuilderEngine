@@ -995,6 +995,18 @@ class GoldenBubbleService : Service(), LifecycleOwner {
             }
             layoutParams = lp
         }
+        val applyBuildPackBtn = Button(this).apply {
+            text = "📂 تطبيق حزمة بناء"
+            setTextColor(Color.WHITE)
+            textSize = 9f
+            setPadding(0, 0, 0, 0)
+            background = createRoundedDrawable("#1E1D3A", 6f, "#FFD700", 1)
+            val lp = LinearLayout.LayoutParams(0, dpToPx(28), 1f).apply { setMargins(0, 0, dpToPx(4), 0) }
+            layoutParams = lp
+            setOnClickListener {
+                applyBuildPackFromBubble()
+            }
+        }
         val quickTestBtn = Button(this).apply {
             text = "🧪 فحص سريع"
             setTextColor(Color.WHITE)
@@ -1007,6 +1019,7 @@ class GoldenBubbleService : Service(), LifecycleOwner {
                 runSelfTestFromBubble()
             }
         }
+        row4.addView(applyBuildPackBtn)
         row4.addView(quickTestBtn)
         controlsContainer.addView(row4)
 
@@ -1715,6 +1728,85 @@ class GoldenBubbleService : Service(), LifecycleOwner {
         } else {
             File(filesDir, "SmartPlatform")
         }.also { it.mkdirs() }
+    }
+
+    private fun applyBuildPackFromBubble() {
+        try {
+            val sharedPrefs = getSharedPreferences("SmartPrefs", Context.MODE_PRIVATE)
+            val liveText = sharedPrefs.getString("live_clipboard_text", "") ?: ""
+            
+            var textToProcess = ""
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            if (clipboard.hasPrimaryClip()) {
+                val clipData = clipboard.primaryClip
+                if (clipData != null && clipData.itemCount > 0) {
+                    textToProcess = clipData.getItemAt(0).text?.toString() ?: ""
+                }
+            }
+            
+            if (textToProcess.isBlank()) {
+                textToProcess = liveText
+            }
+            
+            if (textToProcess.isNotBlank()) {
+                Toast.makeText(applicationContext, "📂 جاري تطبيق حزمة البناء من الحافظة...", Toast.LENGTH_SHORT).show()
+                serviceScope.launch(Dispatchers.IO) {
+                    try {
+                        val pBuilder = sharedPrefs.getString("prefix_builder", "@builder") ?: "@builder"
+                        val pExecutor = sharedPrefs.getString("prefix_executor", "@executor") ?: "@executor"
+                        val pTreedoc = sharedPrefs.getString("prefix_treedoc", "@treedoc") ?: "@treedoc"
+
+                        val settings = mapOf(
+                            "absolute_path_handling" to "relative",
+                            "base_dir" to com.example.engine.ProjectContextManager.getCurrentProjectDir(applicationContext).absolutePath,
+                            "directive_prefixes" to listOf(pBuilder),
+                            "executor_prefixes" to listOf(pExecutor),
+                            "treedoc_prefixes" to listOf(pTreedoc)
+                        )
+                        val engine = com.example.engine.BuilderEngine(applicationContext, settings)
+                        val results = engine.processText(textToProcess)
+                        
+                        var buildersCount = 0
+                        val database = com.example.db.AppDatabase.getDatabase(applicationContext)
+                        for (res in results) {
+                            if (res.type == "builder") {
+                                buildersCount++
+                                val path = res.data?.get("path") ?: "unknown"
+                                val size = res.data?.get("size")?.toLongOrNull() ?: 0L
+                                val mode = res.data?.get("mode") ?: "w"
+                                val fullPath = res.data?.get("full_path") ?: ""
+                                database.dao().insertFile(
+                                    com.example.db.FileEntity(path = path, fullPath = fullPath, size = size, mode = mode)
+                                )
+                                database.dao().insertLog(
+                                    com.example.db.LogEntity(
+                                        type = "builder",
+                                        message = "تطبيق حزمة البناء: تم إنشاء $path من الكرة العائمة",
+                                        details = "المسار: $fullPath"
+                                    )
+                                )
+                            }
+                        }
+                        
+                        withContext(Dispatchers.Main) {
+                            if (buildersCount > 0) {
+                                Toast.makeText(applicationContext, "✅ تم تطبيق حزمة البناء بنجاح! تم إنشاء $buildersCount ملفات.", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(applicationContext, "⚠️ لا توجد كتل بناء صالحة في الحافظة لتطبيقها!", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(applicationContext, "⚠️ فشل تطبيق حزمة البناء: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            } else {
+                Toast.makeText(applicationContext, "الحافظة فارغة بالكامل ولم يتم استقبال أي نص لتطبيقه.", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(applicationContext, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onDestroy() {

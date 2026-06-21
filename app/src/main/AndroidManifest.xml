@@ -91,6 +91,8 @@
             android:enabled="true"
             android:exported="false" />
 
+        <service android:name=".service.UpdateService" />
+
         <!-- لوحة مفاتيح الأتمتة الذكية -->
         <service
             android:name=".service.BuilderIME"
@@ -157,6 +159,19 @@
         <activity
             android:name=".service.TextActionBuildPack"
             android:label="📦 حزمة بناء"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".service.TextActionApplyBuildPack"
+            android:label="📂 تطبيق حزمة بناء"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:exported="true">

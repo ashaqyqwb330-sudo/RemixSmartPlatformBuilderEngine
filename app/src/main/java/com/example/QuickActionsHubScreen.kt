@@ -48,6 +48,9 @@ fun QuickActionsHubScreen(onNavigateBack: () -> Unit) {
     var actionBeautifyEnabled by remember {
         mutableStateOf(prefs.getBoolean("action_beautify_enabled", false))
     }
+    var actionApplyBuildPackEnabled by remember {
+        mutableStateOf(prefs.getBoolean("action_apply_build_pack_enabled", true))
+    }
 
     // States for specific actions sub-settings
     var smartSaveDestination by remember {
@@ -64,6 +67,9 @@ fun QuickActionsHubScreen(onNavigateBack: () -> Unit) {
     }
     var beautifyInlineCss by remember {
         mutableStateOf(prefs.getBoolean("action_beautify_inline_css", false))
+    }
+    var applyBuildPackOverwrite by remember {
+        mutableStateOf(prefs.getBoolean("action_apply_build_pack_overwrite", true))
     }
 
     // Expanded card tracker
@@ -388,6 +394,50 @@ fun QuickActionsHubScreen(onNavigateBack: () -> Unit) {
                                 uncheckedTrackColor = GlassWhite
                             ),
                             modifier = Modifier.testTag("beautify_inline_css_switch")
+                        )
+                    }
+                }
+            }
+
+            // 6. Apply Build Pack Card
+            item {
+                ActionCard(
+                    title = "📂 تطبيق حزمة بناء",
+                    description = "يستقبل توجيهات بناء وينشئ الملفات في مشروعك.",
+                    isEnabled = actionApplyBuildPackEnabled,
+                    onEnabledChange = { isChecked ->
+                        actionApplyBuildPackEnabled = isChecked
+                        prefs.edit().putBoolean("action_apply_build_pack_enabled", isChecked).apply()
+                        if (isChecked) expandedCard = "apply_buildpack" else if (expandedCard == "apply_buildpack") expandedCard = null
+                    },
+                    isExpanded = expandedCard == "apply_buildpack",
+                    onToggleExpand = {
+                        expandedCard = if (expandedCard == "apply_buildpack") null else "apply_buildpack"
+                    },
+                    testTagPrefix = "apply_buildpack"
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("الكتابة فوق الملفات الموجودة", color = TextSilver, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("السماح للمحرك بالكتابة فوق الملفات دون تحذير مسبق", color = TextGray, fontSize = 9.sp)
+                        }
+                        Switch(
+                            checked = applyBuildPackOverwrite,
+                            onCheckedChange = { isChecked ->
+                                applyBuildPackOverwrite = isChecked
+                                prefs.edit().putBoolean("action_apply_build_pack_overwrite", isChecked).apply()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = SlateBg,
+                                checkedTrackColor = MetallicGold,
+                                uncheckedThumbColor = TextGray,
+                                uncheckedTrackColor = GlassWhite
+                            ),
+                            modifier = Modifier.testTag("apply_build_pack_overwrite_switch")
                         )
                     }
                 }
