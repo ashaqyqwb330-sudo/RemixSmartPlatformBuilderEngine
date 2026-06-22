@@ -788,70 +788,13 @@ class BuilderEngine(
                 target.mkdirs()
             }
 
-            val fmt = args["format"] ?: "json"
+            val fmt = args["format"] ?: args["fmt"] ?: "html"
             val copyClipboard = !flags.contains("no-clip")
 
-            val report: String
-            val ext: String
+            val tree = collectTreeData(target, showSize = true, showMtime = true, showCount = true)
+            if (tree.isEmpty()) return@withContext "⚠️ [TREEDOC] المجلد فارغ: ${target.name}" to null
 
-            if (fmt.lowercase(Locale.ROOT) == "json") {
-                ext = "json"
-                val rootArray = JSONArray()
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                
-                val walkRecursive = matchedType == "scan" || flags.contains("recursive") || args["recursive"] == "true"
-                val files = mutableListOf<File>()
-                
-                if (walkRecursive) {
-                    target.walkTopDown().forEach { f ->
-                        if (f.absolutePath != target.absolutePath && !IGNORE_DIRS.contains(f.name)) {
-                            files.add(f)
-                        }
-                    }
-                } else {
-                    target.listFiles()?.forEach { f ->
-                        if (!IGNORE_DIRS.contains(f.name)) {
-                            files.add(f)
-                        }
-                    }
-                }
-
-                for (file in files) {
-                    val obj = JSONObject().apply {
-                        put("name", file.name)
-                        put("path", file.relativeTo(base).path)
-                        put("size", if (file.isDirectory) 0L else file.length())
-                        put("extension", file.extension)
-                        put("lastModified", sdf.format(Date(file.lastModified())))
-                    }
-                    rootArray.put(obj)
-                }
-                report = rootArray.toString(4)
-            } else if (fmt.lowercase(Locale.ROOT) == "html") {
-                ext = "html"
-                val tree = collectTreeData(target, showSize = true, showMtime = true, showCount = true)
-                val sb = java.lang.StringBuilder()
-                sb.append("<!DOCTYPE html><html lang=\"ar\" dir=\"rtl\"><head><meta charset=\"UTF-8\"><title>TreeDoc Report</title></head><body>")
-                sb.append("<div style=\"background:#111; color:#fff; padding:20px; font-family:sans-serif;\">")
-                sb.append("<h1>📂 تقرير مستكشف شجرة المجلد</h1><p>مسار المجلد: ${target.absolutePath}</p>")
-                fun buildHtmlItems(nodes: List<TreeNode>) {
-                    for (node in nodes) {
-                        sb.append("<div style=\"display:flex; justify-content:space-between; padding:5px; background:#222; margin-bottom:2px;\">")
-                        sb.append("<span>${if (node.type == "directory") "📁" else "📄"} ${node.name}</span>")
-                        sb.append("<span>${node.size ?: ""}</span></div>")
-                        if (node.children.isNotEmpty()) {
-                            buildHtmlItems(node.children)
-                        }
-                    }
-                }
-                buildHtmlItems(tree)
-                sb.append("</div></body></html>")
-                report = sb.toString()
-            } else {
-                ext = "txt"
-                val tree = collectTreeData(target, showSize = true, showMtime = true, showCount = true)
-                report = buildTextReport(target.absolutePath, tree, showSize = true, showMtime = true, showCount = true)
-            }
+            val (report, ext) = generateReportForFormat(fmt, target, tree)
 
             if (copyClipboard) {
                 withContext(Dispatchers.Main) {
@@ -889,26 +832,112 @@ class BuilderEngine(
             val tree = collectTreeData(target, showSize = true, showMtime = true, showCount = true)
             if (tree.isEmpty()) return@withContext "⚠️ [TREEDOC] المجلد فارغ: ${target.name}" to null
 
-            val report = when (fmt) {
-                "json" -> buildJsonReport(tree)
-                else -> buildTextReport(target.absolutePath, tree, showSize = true, showMtime = true, showCount = true)
-            }
+            val (report, ext) = generateReportForFormat(fmt, target, tree)
 
             if (copyClipboard) {
-                // نسخ للحافظة (يحتاج ClipboardManager في السياق الرئيسي)
                 withContext(Dispatchers.Main) {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("TreeDoc Report", report))
                 }
             }
 
-            // حفظ الملف
-            val outFile = File(target, "tree_report.${if (fmt == "json") "json" else "txt"}")
+            val outFile = File(target, "tree_report.$ext")
             outFile.writeText(report, Charsets.UTF_8)
             "✅ [TREEDOC] تقرير $fmt جاهز: ${outFile.name}" to mapOf("report" to report, "path" to outFile.absolutePath)
         } catch (e: Exception) {
             "❌ [TREEDOC] فشل: ${e.message}" to null
         }
+    }
+
+    private fun generateReportForFormat(fmt: String, target: File, tree: List<TreeNode>): Pair<String, String> {
+        val lowerFmt = fmt.lowercase(Locale.ROOT)
+        return when (lowerFmt) {
+            "json" -> Pair(buildJsonReport(tree), "json")
+            "csv" -> Pair(buildCsvReport(tree), "csv")
+            "html" -> Pair(buildHtmlDashboard(target, tree), "html")
+            "pdf" -> Pair(buildHtmlDashboard(target, tree), "pdf.html")
+            else -> Pair(buildTextReport(target.absolutePath, tree, showSize = true, showMtime = true, showCount = true), "txt")
+        }
+    }
+
+    private fun buildCsvReport(tree: List<TreeNode>): String {
+        val sb = java.lang.StringBuilder()
+        sb.appendLine("Path,Name,Type,Size,Last Modified")
+        fun addNode(node: TreeNode) {
+            val escapedPath = node.path.replace("\"", "\"\"")
+            val escapedName = node.name.replace("\"", "\"\"")
+            sb.appendLine("\"$escapedPath\",\"$escapedName\",\"${node.type}\",\"${node.size ?: ""}\",\"${node.mtime ?: ""}\"")
+            for (child in node.children) {
+                addNode(child)
+            }
+        }
+        for (root in tree) {
+            addNode(root)
+        }
+        return sb.toString()
+    }
+
+    private fun renderHtmlTree(nodes: List<TreeNode>): String {
+        val sb = java.lang.StringBuilder()
+        for (node in nodes) {
+            if (node.type == "directory") {
+                sb.append("<details>")
+                sb.append("<summary>📁 ${node.name.replace("<", "&lt;").replace(">", "&gt;")} ${if (node.count != null) "<span class='file-size-badge'>(${node.count})</span>" else ""}</summary>")
+                if (node.children.isNotEmpty()) {
+                    sb.append("<ul style='list-style:none; padding-right:15px; margin:0;'>")
+                    sb.append(renderHtmlTree(node.children))
+                    sb.append("</ul>")
+                } else {
+                    sb.append("<div class='empty-placeholder' style='padding:10px; font-size:11px;'>المجلد فارغ</div>")
+                }
+                sb.append("</details>")
+            } else {
+                val ext = if (node.name.contains(".")) node.name.substringAfterLast(".").lowercase() else "no_ext"
+                val escapedName = node.name.replace("'", "\\'").replace("\"", "\\\"")
+                val escapedPath = node.path.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"")
+                val sizeStr = node.size ?: ""
+                val mtimeStr = node.mtime ?: ""
+                
+                sb.append("<li>")
+                sb.append("<div class='file-item' onclick=\"selectFile(this, '$escapedName', '$escapedPath', '$sizeStr', '$mtimeStr', '$ext')\">")
+                sb.append("<span>📄 ${node.name.replace("<", "&lt;").replace(">", "&gt;")}</span>")
+                if (node.size != null) {
+                    sb.append("<span class='file-size-badge'>${node.size}</span>")
+                }
+                sb.append("</div>")
+                sb.append("</li>")
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun buildHtmlDashboard(target: File, tree: List<TreeNode>): String {
+        val flatFiles = mutableListOf<JSONObject>()
+        
+        fun traverse(node: TreeNode) {
+            val obj = JSONObject().apply {
+                put("name", node.name)
+                put("path", node.path)
+                put("type", node.type)
+                put("size", node.size ?: "")
+                put("mtime", node.mtime ?: "")
+                if (node.type == "file") {
+                    val ext = if (node.name.contains(".")) node.name.substringAfterLast(".").lowercase() else "no_ext"
+                    put("ext", ext)
+                }
+            }
+            flatFiles.add(obj)
+            for (child in node.children) {
+                traverse(child)
+            }
+        }
+        for (root in tree) {
+            traverse(root)
+        }
+        
+        val filesJsonData = JSONArray(flatFiles).toString()
+        val treeHtml = renderHtmlTree(tree)
+        return com.example.util.TreeDocHtmlTemplate.build(target.absolutePath, filesJsonData, treeHtml)
     }
 
     // =====================================================================

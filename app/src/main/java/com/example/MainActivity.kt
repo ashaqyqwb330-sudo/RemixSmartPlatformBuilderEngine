@@ -102,6 +102,13 @@ class MainActivity : ComponentActivity() {
         // Dynamic orientation support and status bar adjustment
         setContent {
             MyApplicationTheme {
+                val printHtmlTrigger = viewModel.printHtmlTrigger.collectAsState().value
+                LaunchedEffect(printHtmlTrigger) {
+                    if (printHtmlTrigger != null) {
+                        com.example.util.PdfPrintHelper.printHtml(this@MainActivity, printHtmlTrigger)
+                        viewModel.resetPrintHtmlTrigger()
+                    }
+                }
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = SlateBg
@@ -1109,6 +1116,16 @@ fun MonitorScreen(viewModel: MainViewModel) {
                     }
                 }
             }
+        }
+
+        // Local File Browser and Processor Widget
+        item {
+            LocalFileBrowserWidget(
+                viewModel = viewModel,
+                onLoadToEditor = { text ->
+                    manualText = text
+                }
+            )
         }
 
         // Created Files Grid List
@@ -2148,22 +2165,46 @@ fun TreeDocScreen(viewModel: MainViewModel) {
                     // Format Picker
                     Text("صيغة التقرير الإخراجية", color = TextGray, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("html" to "موقع HTML", "txt" to "نص شجري خطي", "json" to "قاعدة بيانات JSON").forEach { (fmt, label) ->
-                            val isSelected = chosenFormat == fmt
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .background(if (isSelected) GoldGlassBg else GlassWhite, RoundedCornerShape(12.dp))
-                                    .border(1.dp, if (isSelected) MetallicGold else GlassBorder, RoundedCornerShape(12.dp))
-                                    .clickable { chosenFormat = fmt }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(label, color = if (isSelected) MetallicGold else TextSilver, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("html" to "🖥️ موقع HTML", "txt" to "📝 نص شجري", "json" to "⚙️ بيانات JSON").forEach { (fmt, label) ->
+                                val isSelected = chosenFormat == fmt
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(if (isSelected) GoldGlassBg else GlassWhite, RoundedCornerShape(12.dp))
+                                        .border(1.dp, if (isSelected) MetallicGold else GlassBorder, RoundedCornerShape(12.dp))
+                                        .clickable { chosenFormat = fmt }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(label, color = if (isSelected) MetallicGold else TextSilver, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("pdf" to "🎓 مستند PDF", "csv" to "📊 جداول CSV").forEach { (fmt, label) ->
+                                val isSelected = chosenFormat == fmt
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(if (isSelected) GoldGlassBg else GlassWhite, RoundedCornerShape(12.dp))
+                                        .border(1.dp, if (isSelected) MetallicGold else GlassBorder, RoundedCornerShape(12.dp))
+                                        .clickable { chosenFormat = fmt }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(label, color = if (isSelected) MetallicGold else TextSilver, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }

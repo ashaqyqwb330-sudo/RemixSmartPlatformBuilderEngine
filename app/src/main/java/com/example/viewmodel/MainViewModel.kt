@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -67,6 +68,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _treedocReport = MutableStateFlow("")
     val treedocReport: StateFlow<String> = _treedocReport.asStateFlow()
+
+    private val _printHtmlTrigger = MutableStateFlow<String?>(null)
+    val printHtmlTrigger: StateFlow<String?> = _printHtmlTrigger.asStateFlow()
+
+    fun resetPrintHtmlTrigger() {
+        _printHtmlTrigger.value = null
+    }
+
+    fun triggerHtmlPrint(html: String) {
+        _printHtmlTrigger.value = html
+    }
 
     // Logs & Files streams
     val eventLogs = database.dao().getAllLogs()
@@ -361,6 +373,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             
             val report = data?.get("report") ?: ""
             _treedocReport.value = report
+
+            if (format.lowercase(Locale.ROOT) == "pdf" && report.isNotEmpty()) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    triggerHtmlPrint(report)
+                }
+            }
 
             database.dao().insertLog(
                 LogEntity(
