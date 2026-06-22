@@ -494,7 +494,20 @@ fun StorytellerScreen(viewModel: MainViewModel) {
         } else {
             val stories = LogAggregator.generateStoryCards(rawLogs, logViewMode)
             items(stories, key = { it.id }) { story ->
-                StoryCardItem(story = story)
+                StoryCardView(
+                    story = story,
+                    onCopyClick = { summaryText ->
+                        clipboardManager.setText(AnnotatedString(summaryText))
+                        Toast.makeText(context, "📋 تم نسخ ملخص القصة تفصيلياً", Toast.LENGTH_SHORT).show()
+                    },
+                    onFileClick = { path ->
+                        try {
+                            com.example.engine.FileUtils.openFile(context, path)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "فشل فتح الملف: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
             }
         }
     }

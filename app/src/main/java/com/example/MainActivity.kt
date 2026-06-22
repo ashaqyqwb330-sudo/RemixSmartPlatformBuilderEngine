@@ -1658,80 +1658,29 @@ fun MonitorScreen(viewModel: MainViewModel) {
                     }
                     
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         stories.forEach { story ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(GlassWhite, RoundedCornerShape(16.dp))
-                                    .border(1.dp, GlassBorder.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                                    .padding(12.dp)
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Big Beautiful Story-focused Circle Icon
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .background(GoldGlassBg, CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(story.icon, fontSize = 18.sp)
+                            StoryCardView(
+                                story = story,
+                                onCopyClick = { summaryText ->
+                                    try {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Story Summary", summaryText))
+                                        Toast.makeText(context, "📋 تم نسخ ملخص القصة بنجاح!", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "فشل نسخ النص: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                                     }
-                                    
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.Top
-                                        ) {
-                                            Text(
-                                                text = story.title,
-                                                color = TextSilver,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            
-                                            // Badged count of raw logs grouped
-                                            if (story.rawLogsCount > 1) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .background(GoldGlassBg, RoundedCornerShape(6.dp))
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "×${story.rawLogsCount}",
-                                                        color = MetallicGold,
-                                                        fontSize = 8.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        
-                                        Text(
-                                            text = story.details,
-                                            color = TextGray,
-                                            fontSize = 10.sp
-                                        )
-                                        
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        
-                                        Text(
-                                            text = story.relativeTime,
-                                            color = TextMuted,
-                                            fontSize = 8.sp
-                                        )
+                                },
+                                onFileClick = { path ->
+                                    try {
+                                        com.example.engine.FileUtils.openFile(context, path)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "فشل فتح الملف: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                                     }
                                 }
-                            }
+                            )
                         }
                     }
                 } else {

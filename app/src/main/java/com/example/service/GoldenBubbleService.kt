@@ -93,6 +93,7 @@ class GoldenBubbleService : Service(), LifecycleOwner {
     private var activeFilter = "all" // "all", "builder", "executor"
     private var currentFullLogs: List<LogEntity> = emptyList()
     private lateinit var logsContainer: LinearLayout
+    private var isStoryExpanded = false
     private var notificationToastLayout: LinearLayout? = null
     private var notificationToastText: TextView? = null
 
@@ -483,20 +484,269 @@ class GoldenBubbleService : Service(), LifecycleOwner {
         }
         val smartPrefs = getSharedPreferences("SmartPrefs", Context.MODE_PRIVATE)
         val limitCount = smartPrefs.getInt("log_copy_count", 5)
+        val logViewMode = smartPrefs.getString("log_view_mode", "technical") ?: "technical"
         val recentLogs = filteredLogs.take(limitCount)
         
         handler.post {
             try {
                 logsContainer.removeAllViews()
-                if (recentLogs.isEmpty()) {
-                    val emptyTxt = TextView(this@GoldenBubbleService).apply {
-                        text = "لا توجد سجلات مطابقة للفلتر."
-                        setTextColor(Color.parseColor("#64748B"))
-                        textSize = 9f
-                        gravity = Gravity.CENTER
-                        setPadding(0, dpToPx(16), 0, dpToPx(16))
+                if (logViewMode != "technical") {
+                    val stories = com.example.LogAggregator.generateStoryCards(filteredLogs, logViewMode)
+                    val latestStory = stories.firstOrNull()
+                    if (latestStory == null) {
+                        val emptyTxt = TextView(this@GoldenBubbleService).apply {
+                            text = "لا توجد قصص مصورة متاحة."
+                            setTextColor(Color.parseColor("#64748B"))
+                            textSize = 9f
+                            gravity = Gravity.CENTER
+                            setPadding(0, dpToPx(16), 0, dpToPx(16))
+                        }
+                        logsContainer.addView(emptyTxt)
+                    } else {
+                        // Build storyboard card programmatically
+                        val cardLayout = LinearLayout(this@GoldenBubbleService).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
+                            background = createRoundedDrawable("#1E293B", 10f, "#334155", 1)
+                            val lp = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, 0, dpToPx(6))
+                            }
+                            layoutParams = lp
+                        }
+
+                        val headerRow = LinearLayout(this@GoldenBubbleService).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+
+                        val iconContainer = FrameLayout(this@GoldenBubbleService).apply {
+                            background = createRoundedDrawable("#334155", 16f)
+                            setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
+                            val iconText = TextView(this@GoldenBubbleService).apply {
+                                text = latestStory.icon
+                                textSize = 14f
+                            }
+                            addView(iconText)
+                        }
+                        headerRow.addView(iconContainer)
+
+                        val titleCol = LinearLayout(this@GoldenBubbleService).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dpToPx(8), 0, 0, 0)
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+
+                        val titleText = TextView(this@GoldenBubbleService).apply {
+                            text = latestStory.title
+                            setTextColor(Color.parseColor("#F1F5F9"))
+                            textSize = 10.5f
+                            setTypeface(null, Typeface.BOLD)
+                        }
+                        titleCol.addView(titleText)
+
+                        val timeText = TextView(this@GoldenBubbleService).apply {
+                            text = latestStory.time
+                            setTextColor(Color.parseColor("#94A3B8"))
+                            textSize = 8f
+                        }
+                        titleCol.addView(timeText)
+
+                        headerRow.addView(titleCol)
+                        cardLayout.addView(headerRow)
+
+                        val spacerLine = View(this@GoldenBubbleService).apply {
+                            background = createRoundedDrawable("#475569", 1f)
+                            val lpLine = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                dpToPx(1)
+                            ).apply {
+                                setMargins(0, dpToPx(6), 0, dpToPx(6))
+                            }
+                            layoutParams = lpLine
+                        }
+                        cardLayout.addView(spacerLine)
+
+                        val summaryText = TextView(this@GoldenBubbleService).apply {
+                            text = latestStory.summary
+                            setTextColor(Color.parseColor("#CBD5E1"))
+                            textSize = 9.5f
+                            setPadding(0, 0, 0, dpToPx(6))
+                        }
+                        cardLayout.addView(summaryText)
+
+                        val statsLayout = LinearLayout(this@GoldenBubbleService).apply {
+                            orientation = LinearLayout.VERTICAL
+                            background = createRoundedDrawable("#0F172A", 6f)
+                            setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
+                            val lpStats = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, 0, dpToPx(6))
+                            }
+                            layoutParams = lpStats
+                        }
+
+                        val progressLabelsRow = LinearLayout(this@GoldenBubbleService).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+
+                        val statsLabel = TextView(this@GoldenBubbleService).apply {
+                            text = "📊 عمليات:"
+                            setTextColor(Color.parseColor("#D4AF37"))
+                            textSize = 8.5f
+                            setTypeface(null, Typeface.BOLD)
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+                        progressLabelsRow.addView(statsLabel)
+
+                        val successLabel = TextView(this@GoldenBubbleService).apply {
+                            text = "نجح: ${latestStory.successCount}"
+                            setTextColor(Color.parseColor("#4ADE80"))
+                            textSize = 8f
+                            setTypeface(null, Typeface.BOLD)
+                            setPadding(0, 0, dpToPx(4), 0)
+                        }
+                        progressLabelsRow.addView(successLabel)
+
+                        val failureLabel = TextView(this@GoldenBubbleService).apply {
+                            text = "فشل: ${latestStory.totalCount - latestStory.successCount}"
+                            setTextColor(Color.parseColor("#EF4444"))
+                            textSize = 8f
+                            setTypeface(null, Typeface.BOLD)
+                        }
+                        progressLabelsRow.addView(failureLabel)
+
+                        statsLayout.addView(progressLabelsRow)
+
+                        val progressBar = android.widget.ProgressBar(this@GoldenBubbleService, null, android.R.attr.progressBarStyleHorizontal).apply {
+                            max = latestStory.totalCount
+                            progress = latestStory.successCount
+                            val lpProgress = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                dpToPx(4)
+                            ).apply {
+                                setMargins(0, dpToPx(4), 0, 0)
+                            }
+                            layoutParams = lpProgress
+                        }
+                        statsLayout.addView(progressBar)
+                        cardLayout.addView(statsLayout)
+
+                        // Collapsible details log container
+                        val detailsContainer = LinearLayout(this@GoldenBubbleService).apply {
+                            orientation = LinearLayout.VERTICAL
+                            background = createRoundedDrawable("#020617", 6f)
+                            setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
+                            visibility = if (isStoryExpanded) View.VISIBLE else View.GONE
+                            val lpDet = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, 0, dpToPx(6))
+                            }
+                            layoutParams = lpDet
+                        }
+
+                        val detailsColTitle = TextView(this@GoldenBubbleService).apply {
+                            text = "📋 الأحداث المفصلة:"
+                            setTextColor(Color.parseColor("#94A3B8"))
+                            textSize = 8.5f
+                            setTypeface(null, Typeface.BOLD)
+                            setPadding(0, 0, 0, dpToPx(4))
+                        }
+                        detailsContainer.addView(detailsColTitle)
+
+                        latestStory.rawEvents.forEach { event ->
+                            val eventText = TextView(this@GoldenBubbleService).apply {
+                                text = "• ${event.message}"
+                                setTextColor(Color.parseColor("#94A3B8"))
+                                textSize = 8f
+                                setPadding(0, dpToPx(1), 0, dpToPx(1))
+                            }
+                            detailsContainer.addView(eventText)
+                        }
+                        cardLayout.addView(detailsContainer)
+
+                        // Action Buttons row
+                        val buttonsRow = LinearLayout(this@GoldenBubbleService).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+
+                        val copyBtn = Button(this@GoldenBubbleService).apply {
+                            text = "📋 نسخ"
+                            textSize = 8.5f
+                            setTextColor(Color.WHITE)
+                            background = createRoundedDrawable("#334155", 4f)
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                dpToPx(28)
+                            ).apply {
+                                setMargins(0, 0, dpToPx(4), 0)
+                            }
+                            setOnClickListener {
+                                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Story Summary", latestStory.summary)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(applicationContext, "📋 تم نسخ ملخص القصة!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        buttonsRow.addView(copyBtn)
+
+                        val detailsToggleBtn = Button(this@GoldenBubbleService).apply {
+                            text = if (isStoryExpanded) "إخفاء" else "🔍 تفاصيل"
+                            textSize = 8.5f
+                            setTextColor(Color.WHITE)
+                            background = createRoundedDrawable("#334155", 4f)
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                dpToPx(28)
+                            ).apply {
+                                setMargins(0, 0, dpToPx(4), 0)
+                            }
+                        }
+                        buttonsRow.addView(detailsToggleBtn)
+
+                        val doToggleExpand = View.OnClickListener {
+                            isStoryExpanded = !isStoryExpanded
+                            detailsContainer.visibility = if (isStoryExpanded) View.VISIBLE else View.GONE
+                            detailsToggleBtn.text = if (isStoryExpanded) "إخفاء" else "🔍 تفاصيل"
+                        }
+
+                        detailsToggleBtn.setOnClickListener(doToggleExpand)
+                        cardLayout.setOnClickListener(doToggleExpand)
+
+                        if (!latestStory.filePath.isNullOrBlank()) {
+                            val openFileBtn = Button(this@GoldenBubbleService).apply {
+                                text = "📂 فتح الملف"
+                                textSize = 8.5f
+                                setTextColor(Color.BLACK)
+                                background = createRoundedDrawable("#D4AF37", 4f)
+                                layoutParams = LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                                    dpToPx(28)
+                                ).apply {
+                                    setMargins(dpToPx(6), 0, 0, 0)
+                                }
+                                setOnClickListener {
+                                    try {
+                                        com.example.engine.FileUtils.openFile(this@GoldenBubbleService, latestStory.filePath)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(applicationContext, "فشل فتح الملف: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            buttonsRow.addView(openFileBtn)
+                        }
+
+                        cardLayout.addView(buttonsRow)
+                        logsContainer.addView(cardLayout)
                     }
-                    logsContainer.addView(emptyTxt)
                 } else {
                     for (log in recentLogs) {
                         val logRow = LinearLayout(this@GoldenBubbleService).apply {
@@ -573,6 +823,7 @@ class GoldenBubbleService : Service(), LifecycleOwner {
             try {
                 val smartPrefs = getSharedPreferences("SmartPrefs", Context.MODE_PRIVATE)
                 val count = smartPrefs.getInt("log_copy_count", 5)
+                val logViewMode = smartPrefs.getString("log_view_mode", "technical") ?: "technical"
                 val logs = database.dao().getAllLogs().first().take(count)
                 if (logs.isEmpty()) {
                     withContext(Dispatchers.Main) {
@@ -580,14 +831,31 @@ class GoldenBubbleService : Service(), LifecycleOwner {
                     }
                     return@launch
                 }
-                val formattedLogs = logs.joinToString("\n") { log ->
-                    "[${getRelativeTimeString(log.timestamp)}] ${log.message}"
+                
+                val textToCopy = if (logViewMode != "technical") {
+                    val stories = com.example.LogAggregator.generateStoryCards(logs, logViewMode)
+                    if (stories.isEmpty()) {
+                        "لا توجد قصص مصورة بعد للتسجيل الحالي."
+                    } else {
+                        stories.joinToString("\n\n") { story ->
+                            "${story.icon} ${story.title} (${story.time})\n${story.summary}\nتحليل: ${story.details}\n(نجح: ${story.successCount} | فشل: ${story.totalCount - story.successCount})"
+                        }
+                    }
+                } else {
+                    logs.joinToString("\n") { log ->
+                        "[${getRelativeTimeString(log.timestamp)}] ${log.message}"
+                    }
                 }
+
                 withContext(Dispatchers.Main) {
                     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("Event Logs", formattedLogs)
+                    val clip = ClipData.newPlainText(if (logViewMode != "technical") "Story Logs" else "Event Logs", textToCopy)
                     clipboard.setPrimaryClip(clip)
-                    Toast.makeText(applicationContext, "تم نسخ آخر $count أحداث بنجاح!", Toast.LENGTH_SHORT).show()
+                    if (logViewMode != "technical") {
+                        Toast.makeText(applicationContext, "📋 تم نسخ ملخص قصص السجل بنجاح!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(applicationContext, "تم نسخ آخر $count أحداث تقنية بنجاح!", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
