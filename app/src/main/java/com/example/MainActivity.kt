@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -74,6 +75,12 @@ fun isAccessibilityServiceEnabled(context: Context): Boolean {
     return enabled.contains(service) || enabled.contains("ClipboardAccessibilityService")
 }
 
+enum class AppFlowState {
+    SPLASH,
+    ONBOARDING,
+    MAIN_APP
+}
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
@@ -100,18 +107,50 @@ class MainActivity : ComponentActivity() {
                     color = SlateBg
                 ) {
                     val sharedPrefs = LocalContext.current.getSharedPreferences("SmartPrefs", Context.MODE_PRIVATE)
-                    var simulatedGoldenFrame by remember {
-                        mutableStateOf(sharedPrefs.getBoolean("simulate_golden_frame", true))
+                    var appState by remember {
+                        val hasSeenOnboarding = sharedPrefs.getBoolean("has_seen_onboarding", false)
+                        mutableStateOf(if (hasSeenOnboarding) AppFlowState.SPLASH else AppFlowState.ONBOARDING)
                     }
 
-                    MainAppContent(
-                        viewModel = viewModel,
-                        simulatedGoldenFrame = simulatedGoldenFrame,
-                        onToggleSimulatedFrame = { newState ->
-                            simulatedGoldenFrame = newState
-                            sharedPrefs.edit().putBoolean("simulate_golden_frame", newState).apply()
+                    AnimatedContent(
+                        targetState = appState,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(600)) + slideInHorizontally(initialOffsetX = { it }) togetherWith
+                            fadeOut(animationSpec = tween(600)) + slideOutHorizontally(targetOffsetX = { -it })
+                        },
+                        label = "app_flow_transitions"
+                    ) { targetState ->
+                        when (targetState) {
+                            AppFlowState.ONBOARDING -> {
+                                OnboardingScreen(
+                                    onFinish = {
+                                        appState = AppFlowState.SPLASH
+                                    }
+                                )
+                            }
+                            AppFlowState.SPLASH -> {
+                                SplashScreen(
+                                    onSplashComplete = {
+                                        appState = AppFlowState.MAIN_APP
+                                    }
+                                )
+                            }
+                            AppFlowState.MAIN_APP -> {
+                                var simulatedGoldenFrame by remember {
+                                    mutableStateOf(sharedPrefs.getBoolean("simulate_golden_frame", true))
+                                }
+
+                                MainAppContent(
+                                    viewModel = viewModel,
+                                    simulatedGoldenFrame = simulatedGoldenFrame,
+                                    onToggleSimulatedFrame = { newState ->
+                                        simulatedGoldenFrame = newState
+                                        sharedPrefs.edit().putBoolean("simulate_golden_frame", newState).apply()
+                                    }
+                                )
+                            }
                         }
-                    )
+                    }
                 }
             }
         }
@@ -202,12 +241,15 @@ fun MainAppContent(
             .border(3.2.dp, Brush.linearGradient(listOf(MetallicGold, BrightGold, DarkGold)), RoundedCornerShape(42.dp))
             .shadow(12.dp, RoundedCornerShape(42.dp))
             .clip(RoundedCornerShape(42.dp))
-            .background(SlateBg)
+            .background(Color.Transparent)
     } else {
         Modifier.fillMaxSize()
     }
 
     Box(modifier = Modifier.fillMaxSize().background(SlateBg)) {
+        // Dynamic Slow Flow Waves Background
+        WaveBackground(waveColor = MaterialTheme.colorScheme.primary)
+
         Column(modifier = frameModifier) {
             // Android Status Bar Simulation if golden frame is active
             if (simulatedGoldenFrame) {
